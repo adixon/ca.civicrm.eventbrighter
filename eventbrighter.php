@@ -106,3 +106,63 @@ function eventbrighter_civicrm_caseTypes(&$caseTypes) {
 function eventbrighter_civicrm_alterSettingsFolders(&$metaDataFolders = NULL) {
   _eventbrighter_civix_civicrm_alterSettingsFolders($metaDataFolders);
 }
+
+function eventbrighter_civicrm_tokens(&$tokens) {
+  $params = array('version' => 3, 'sequential' => 1, 'is_template' => 0, 'is_online_registration' => 1, 'is_active' => 1);
+  $result = civicrm_api('Event', 'get', $params);
+  $tokens['eventbrighter'] = array();
+  $my_tokens = array('description' => 'Description','summary' => 'Summary','title' => 'Title','dates' => 'Dates', 'registration' => 'Registration Button', 'location' => 'Location');
+  foreach($result['values'] as $event) {
+    $token_title = $event['title'].' ('.substr($event['start_date'],0,10).')';
+    foreach($my_tokens as $key => $label) {
+      $token = 'eventbrighter.'.$key.'_'.$event['id'];
+      // $token = $key.'_'.$event['id'];
+      $tokens['eventbrighter'][$token] = $token_title.' '.$label;
+    }
+  }
+}
+
+function eventbrighter_civicrm_tokenValues(&$values, &$contactIDs, $job = null, $tokens = array(), $context = null) {
+  if (!empty($tokens['eventbrighter'])){
+    $protocol = empty($_SERVER['HTTPS']) ? 'http://' : 'https://';
+    $host = $protocol.$_SERVER['SERVER_NAME'];
+    $event_tokens = array();
+    foreach(array_keys($tokens['eventbrighter']) as $token) {
+      list($key,$event_id) = explode('_',$token,2);
+      if (empty($event_tokens[$event_id])) {
+        $event_tokens[$event_id] = array();
+      }
+      $event_tokens[$event_id][] = $key;
+    }
+    foreach($event_tokens as $event_id => $my_tokens) {
+      $params = array('version' => 3, 'sequential' => 1, 'id' => $event_id);
+      $event = civicrm_api('Event', 'getsingle', $params);
+      foreach($my_tokens as $key) {
+        $token_key = 'eventbrighter.'.$key.'_'.$event_id;
+        switch($key) {
+          case 'location': // calculate a nice address html
+            $lparams = array('version' => 3, 'sequential' => 1, 'id' => $event['loc_block_id'], 'return' => 'address');
+            $address  = civicrm_api('LocBlock','getvalue',$lparams);
+            $html = '<address>'.$address['street_address'].'<br />'.$address['city'].' '.$address['postal_code'].'</address>';
+            foreach($contactIDs as $cid) {
+              $values[$cid][$token_key] = $html;
+            }
+            break;
+          case 'dates': // 
+            $html = $event['start_date']. empty($event['end_date']) ? '' : ' to '.$event['end_date'];
+            foreach($contactIDs as $cid) {
+              $values[$cid][$token_key] = $html;
+            }
+            break;
+          default:
+            if (isset($event[$key])) {
+              foreach($contactIDs as $cid) {
+                $values[$cid][$token_key] = $event[$key];
+              }
+            }
+            break;
+        }
+      }
+    }
+  }
+}
