@@ -154,6 +154,14 @@ function eventbrighter_civicrm_tokenValues(&$values, &$contactIDs, $job = null, 
               $values[$cid][$token_key] = $html;
             }
             break;
+          case 'registration': //  registration button
+            // replace this with a better way of generating urls!
+            $html = $host.'/civicrm/event/register?reset=1&id='.$event['id'];
+            foreach($contactIDs as $cid) {
+              $checksum = CRM_Contact_BAO_Contact_Utils::generateChecksum($cid);
+              $values[$cid][$token_key] = '<a href="'.$html.'&cs='.$checksum.'&cid='.$cid.'">Register Now</a>';
+            }
+            break;
           default:
             if (isset($event[$key])) {
               foreach($contactIDs as $cid) {
