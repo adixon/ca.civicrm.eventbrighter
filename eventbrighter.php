@@ -108,10 +108,10 @@ function eventbrighter_civicrm_alterSettingsFolders(&$metaDataFolders = NULL) {
 }
 
 function eventbrighter_civicrm_tokens(&$tokens) {
-  $params = array('version' => 3, 'sequential' => 1, 'is_template' => 0, 'is_online_registration' => 1, 'is_active' => 1);
+  $params = array('version' => 3, 'sequential' => 1, 'is_template' => 0, 'is_online_registration' => 1, 'is_active' => 1, 'end_date' > date('Y-m-d'));
   $result = civicrm_api('Event', 'get', $params);
   $tokens['eventbrighter'] = array();
-  $my_tokens = array('description' => 'Description','summary' => 'Summary','title' => 'Title','dates' => 'Dates', 'registration' => 'Registration Button', 'location' => 'Location');
+  $my_tokens = array('maplink' => 'Map Link', 'registrationurl' => 'Registration Url', 'infourl' => 'Event Information URL', 'description' => 'Description','summary' => 'Summary','title' => 'Title','dates' => 'Dates', 'registration' => 'Registration Button', 'location' => 'Location');
   foreach($result['values'] as $event) {
     $token_title = $event['title'].' ('.substr($event['start_date'],0,10).')';
     foreach($my_tokens as $key => $label) {
@@ -135,31 +135,62 @@ function eventbrighter_civicrm_tokenValues(&$values, &$contactIDs, $job = null, 
       $event_tokens[$event_id][] = $key;
     }
     foreach($event_tokens as $event_id => $my_tokens) {
-      $params = array('version' => 3, 'sequential' => 1, 'id' => $event_id);
-      $event = civicrm_api('Event', 'getsingle', $params);
+      $params = array('id' => $event_id);
+      $event = civicrm_api3('Event', 'getsingle', $params);
+      $register_url = CRM_Utils_System::url('civicrm/event/register',
+        'reset=1&id='.$event['id'], TRUE);
+      $info_url = CRM_Utils_System::url('civicrm/event/info',
+        'reset=1&id='.$event['id'], TRUE);
+
       foreach($my_tokens as $key) {
         $token_key = 'eventbrighter.'.$key.'_'.$event_id;
         switch($key) {
           case 'location': // calculate a nice address html
             $lparams = array('version' => 3, 'sequential' => 1, 'id' => $event['loc_block_id'], 'return' => 'address');
             $address  = civicrm_api('LocBlock','getvalue',$lparams);
-            $html = '<address>'.$address['street_address'].'<br />'.$address['city'].' '.$address['postal_code'].'</address>';
+            // $lparams = array('version' => 3, 'sequential' => 1, 'id' => $event['loc_block_id'], 'return' => 'address_id');
+            // $address_id  = civicrm_api('LocBlock','getsingle',$lparams);
+            // $aparams = array('version' => 3, 'sequential' => 1, 'id' => $address_id['address_id']);
+            // $address  = civicrm_api('Address','getsingle',$aparams);
+            $html = '';
+            foreach(array('name','street_address','city') as $lkey) {
+              if (!empty($address[$lkey])) {
+                $html .= '<br />'.$address[$lkey];
+              }
+            }
             foreach($contactIDs as $cid) {
               $values[$cid][$token_key] = $html;
             }
             break;
+          case 'maplink': // calculate a nice address html
+            if (!empty($address['geo_code_1'])) {
+              $html = '<div><a href="https://maps.google.ca/?q='.$address['geo_code_1'].','.$address['geo_code_2'].'">View Map</a></div>';
+              foreach($contactIDs as $cid) {
+                $values[$cid][$token_key] = $html;
+              }
+            }
+            break;
           case 'dates': // 
-            $html = $event['start_date']. empty($event['end_date']) ? '' : ' to '.$event['end_date'];
+            $html = CRM_Utils_Date::customFormat($event['event_start_date']). (empty($event['event_end_date']) ? '' : ' to '.CRM_Utils_Date::customFormat($event['event_end_date']));
             foreach($contactIDs as $cid) {
               $values[$cid][$token_key] = $html;
             }
             break;
           case 'registration': //  registration button
-            // replace this with a better way of generating urls!
-            $html = $host.'/civicrm/event/register?reset=1&id='.$event['id'];
             foreach($contactIDs as $cid) {
               $checksum = CRM_Contact_BAO_Contact_Utils::generateChecksum($cid);
-              $values[$cid][$token_key] = '<a href="'.$html.'&cs='.$checksum.'&cid='.$cid.'">Register Now</a>';
+              $values[$cid][$token_key] = '<a href="'.$register_url.'&cs='.$checksum.'&cid='.$cid.'">Register Now</a>';
+            }
+            break;
+          case 'registrationurl': //  registration url
+            foreach($contactIDs as $cid) {
+              $checksum = CRM_Contact_BAO_Contact_Utils::generateChecksum($cid);
+              $values[$cid][$token_key] = $register_url.'&cs='.$checksum.'&cid='.$cid;
+            }
+            break;
+          case 'infourl': //  registration url
+            foreach($contactIDs as $cid) {
+              $values[$cid][$token_key] = $info_url;
             }
             break;
           default:
